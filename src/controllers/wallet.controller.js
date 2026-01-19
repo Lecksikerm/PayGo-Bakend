@@ -1,6 +1,6 @@
 const Wallet = require("../models/wallet.model");
 const Transaction = require("../models/transaction.model");
-const User = require("../models/user.model"); 
+const User = require("../models/user.model");
 
 exports.getWallet = async (req, res) => {
     const wallet = await Wallet.findOne({ user: req.user.id });
@@ -85,17 +85,71 @@ exports.transfer = async (req, res) => {
 
 exports.getTransactions = async (req, res) => {
     try {
-        const transactions = await Transaction.find({ user: req.user.id })
-            .sort({ createdAt: -1 }); 
+        const userId = req.user.id;
+
+        // Query Params
+        let { page = 1, limit = 10, type, startDate, endDate, sort = "desc" } = req.query;
+        page = parseInt(page);
+        limit = parseInt(limit);
+
+        const filter = { user: userId };
+
+        // Filter by type (credit, debit)
+        if (type && ["credit", "debit"].includes(type)) {
+            filter.type = type;
+        }
+
+        // Date range filter
+        if (startDate || endDate) {
+            filter.createdAt = {};
+            if (startDate) filter.createdAt.$gte = new Date(startDate);
+            if (endDate) filter.createdAt.$lte = new Date(endDate);
+        }
+
+        // Sort order
+        const sortOption = sort === "asc" ? 1 : -1;
+
+        const transactions = await Transaction.find(filter)
+            .sort({ createdAt: sortOption })
+            .skip((page - 1) * limit)
+            .limit(limit);
+
+        const total = await Transaction.countDocuments(filter);
 
         res.json({
-            count: transactions.length,
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
             transactions
         });
 
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: "Server error" });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
+exports.getTransactionById = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { id } = req.params;
+
+        const transaction = await Transaction.findOne({
+            _id: id,
+            user: userId
+        });
+
+        if (!transaction) {
+            return res.status(404).json({ message: "Transaction not found" });
+        }
+
+        res.json({
+            message: "Transaction retrieved successfully",
+            transaction
+        });
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 };
 

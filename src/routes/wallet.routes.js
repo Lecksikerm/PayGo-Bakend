@@ -97,16 +97,73 @@ router.post("/transfer", auth, walletController.transfer);
  * /api/wallet/transactions:
  *   get:
  *     tags: [Wallet]
- *     summary: Get user's transaction history
+ *     summary: Get paginated & filtered transaction history
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         example: 10
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [credit, debit]
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
  *     responses:
  *       200:
- *         description: List of user transactions
+ *         description: Transaction list retrieved successfully
  *       401:
  *         description: Unauthorized
  */
+
 router.get("/transactions", auth, walletController.getTransactions);
+
+/**
+ * @swagger
+ * /api/wallet/transactions/{id}:
+ *   get:
+ *     tags: [Wallet]
+ *     summary: Get a single transaction by ID
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Transaction ID
+ *     responses:
+ *       200:
+ *         description: Transaction retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Transaction not found
+ */
+router.get("/transactions/:id", auth, walletController.getTransactionById);
 
 
 module.exports = router;
