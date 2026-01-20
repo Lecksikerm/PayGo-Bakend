@@ -1,5 +1,6 @@
 const User = require("../models/user.model");
 const bcrypt = require("bcryptjs");
+const cloudinary = require("../config/cloudinary");
 
 
 exports.getProfile = async (req, res) => {
@@ -29,7 +30,7 @@ exports.updateProfile = async (req, res) => {
         await user.save();
 
         const userResponse = user.toObject();
-        delete userResponse.password; 
+        delete userResponse.password;
 
         res.json({
             message: "Profile updated successfully",
@@ -71,5 +72,34 @@ exports.changePassword = async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 };
+
+exports.uploadAvatar = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+
+        if (!req.file) {
+            return res.status(400).json({ message: "No image file uploaded" });
+        }
+
+        if (user.avatar) {
+            const oldPublicId = user.avatar.split("/").pop().split(".")[0];
+            await cloudinary.uploader.destroy("paygo/avatars/" + oldPublicId);
+        }
+
+        user.avatar = req.file.path;
+        await user.save();
+
+        return res.json({
+            message: "Avatar uploaded successfully",
+            avatar: user.avatar,
+        });
+
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Server error" });
+    }
+};
+
+
 
 

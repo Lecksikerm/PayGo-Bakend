@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const auth = require("../middlewares/auth.middleware");
 const profileController = require("../controllers/profile.controller");
+const upload = require("../middlewares/upload.middleware");
+
 
 /**
  * @swagger
@@ -82,6 +84,30 @@ router.put("/", auth, profileController.updateProfile);
  *         description: Invalid password
  */
 router.post("/change-password", auth, profileController.changePassword);
+
+/**
+ * @swagger
+ * /api/profile/avatar:
+ *   post:
+ *     tags: [Profile]
+ *     summary: Upload or update profile avatar
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               avatar:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Avatar uploaded successfully
+ */
+router.post("/avatar", auth, upload.single("avatar"), profileController.uploadAvatar);
 
 module.exports = router;
 
