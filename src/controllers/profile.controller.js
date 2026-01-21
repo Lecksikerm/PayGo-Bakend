@@ -100,6 +100,40 @@ exports.uploadAvatar = async (req, res) => {
     }
 };
 
+exports.deleteAccount = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { password } = req.body;
+
+        if (!password) {
+            return res.status(400).json({ message: "Password is required" });
+        }
+
+        const user = await User.findById(userId).select("+password");
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        const isMatch = await user.matchPassword(password);
+        if (!isMatch) {
+            return res.status(400).json({ message: "Incorrect password" });
+        }
+
+        await User.findByIdAndDelete(userId);
+
+        return res.status(200).json({
+            message: "Account deleted successfully",
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            message: "Server error",
+        });
+    }
+};
+
 
 
 

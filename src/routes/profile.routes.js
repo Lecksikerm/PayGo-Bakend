@@ -109,5 +109,36 @@ router.post("/change-password", auth, profileController.changePassword);
  */
 router.post("/avatar", auth, upload.single("avatar"), profileController.uploadAvatar);
 
+/**
+ * @swagger
+ * /api/profile/delete:
+ *   delete:
+ *     tags: [Profile]
+ *     summary: Delete user account permanently (requires password confirmation)
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 example: "userpassword123"
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
+ *       400:
+ *         description: Incorrect password
+ *       401:
+ *         description: Unauthorized
+ */
+router.delete("/delete", auth, profileController.deleteAccount);
+
+
 module.exports = router;
 
