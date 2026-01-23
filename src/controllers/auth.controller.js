@@ -1,10 +1,7 @@
 const User = require("../models/user.model");
 const Wallet = require("../models/wallet.model");
 const generateOTP = require("../utils/generateOtp");
-const {
-    generateAccessToken,
-    generateRefreshToken
-} = require("../utils/generateToken");
+const { generateAccessToken, generateRefreshToken } = require("../utils/generateToken");
 
 const {
     sendOTPEmail,
@@ -12,8 +9,6 @@ const {
     sendPasswordChangedEmail
 } = require("../services/email.service");
 
-
-// REGISTER USER
 exports.register = async (req, res, next) => {
     try {
         const { firstName, lastName, email, password } = req.body;
@@ -22,6 +17,7 @@ exports.register = async (req, res, next) => {
         if (existingUser)
             return res.status(400).json({ message: "User already exists" });
 
+        // Generate OTP for email verification
         const otp = generateOTP();
         const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
@@ -53,21 +49,15 @@ exports.register = async (req, res, next) => {
     }
 };
 
-
-// VERIFY OTP + CREATE WALLET
 exports.verifyOtp = async (req, res) => {
     try {
         const { email, otp } = req.body;
 
         const user = await User.findOne({ email });
-        if (!user)
-            return res.status(400).json({ message: "User not found" });
+        if (!user) return res.status(400).json({ message: "User not found" });
 
-        if (user.otp !== otp)
-            return res.status(400).json({ message: "Invalid OTP" });
-
-        if (user.otpExpires < new Date())
-            return res.status(400).json({ message: "OTP expired" });
+        if (user.otp !== otp) return res.status(400).json({ message: "Invalid OTP" });
+        if (user.otpExpires < new Date()) return res.status(400).json({ message: "OTP expired" });
 
         // Mark user as verified
         user.isVerified = true;
@@ -75,7 +65,7 @@ exports.verifyOtp = async (req, res) => {
         user.otpExpires = undefined;
         await user.save();
 
-        // Create wallet if not exists
+        // Create wallet if it doesn't exist
         let wallet = await Wallet.findOne({ user: user._id });
         if (!wallet) {
             wallet = await Wallet.create({
@@ -103,17 +93,12 @@ exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        // Make sure password is selected
         const user = await User.findOne({ email }).select("+password");
-        if (!user)
-            return res.status(400).json({ message: "Invalid email or password" });
-
-        if (!user.isVerified)
-            return res.status(400).json({ message: "Account not verified" });
+        if (!user) return res.status(400).json({ message: "Invalid email or password" });
+        if (!user.isVerified) return res.status(400).json({ message: "Account not verified" });
 
         const isMatch = await user.matchPassword(password);
-        if (!isMatch)
-            return res.status(400).json({ message: "Invalid email or password" });
+        if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
         const accessToken = generateAccessToken(user._id);
         const refreshToken = generateRefreshToken(user._id);
@@ -134,16 +119,14 @@ exports.login = async (req, res) => {
     }
 };
 
-
 exports.forgotPassword = async (req, res) => {
     try {
         const { email } = req.body;
 
         const user = await User.findOne({ email });
-        if (!user)
-            return res.status(400).json({ message: "User not found" });
+        if (!user) return res.status(400).json({ message: "User not found" });
 
-        // Generate reset OTP
+        // Generate OTP for password reset
         const otp = generateOTP();
         const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
@@ -151,7 +134,6 @@ exports.forgotPassword = async (req, res) => {
         user.otpExpires = otpExpires;
         await user.save();
 
-        // Send OTP email
         await sendOTPEmail(user.email, otp);
 
         res.json({ message: "OTP sent to email for password reset" });
@@ -165,7 +147,7 @@ exports.resetPassword = async (req, res) => {
     try {
         const { email, otp, newPassword } = req.body;
 
-        const user = await User.findOne({ email }).select("+password"); // select password
+        const user = await User.findOne({ email }).select("+password");
         if (!user) return res.status(400).json({ message: "User not found" });
 
         if (user.otp !== otp) return res.status(400).json({ message: "Invalid OTP" });
@@ -183,8 +165,8 @@ exports.resetPassword = async (req, res) => {
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
-
 };
+
 
 
 

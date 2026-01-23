@@ -2,18 +2,21 @@ const nodemailer = require("nodemailer");
 
 const transporter = nodemailer.createTransport({
     host: process.env.MAIL_HOST,
-    port: process.env.MAIL_PORT,
-    secure: false,
+    port: Number(process.env.MAIL_PORT),
+    secure: Number(process.env.MAIL_PORT) === 465,
     auth: {
         user: process.env.MAIL_USER,
         pass: process.env.MAIL_PASS,
     },
+    tls: {
+        rejectUnauthorized: false,
+    }
 });
 
 async function sendEmail(to, subject, text) {
     try {
         await transporter.sendMail({
-            from: `PayGo <${process.env.SMTP_USER}>`,
+            from: process.env.MAIL_FROM,
             to,
             subject,
             text,
@@ -33,16 +36,14 @@ async function sendOTPEmail(to, otp) {
     );
 }
 
-// Welcome Email
 async function sendWelcomeEmail(to, name) {
     return sendEmail(
         to,
-        "Welcome to PayGo 🎉",
-        `Hi ${name},\n\nYour PayGo account has been created successfully!\nWelcome on board 🚀`
+        "Welcome to PayGo ",
+        `Hi ${name},\n\nYour PayGo account has been created successfully!\nWelcome aboard 🚀`
     );
 }
 
-// Password Change
 async function sendPasswordChangedEmail(to) {
     return sendEmail(
         to,
@@ -51,7 +52,6 @@ async function sendPasswordChangedEmail(to) {
     );
 }
 
-// Account Deleted
 async function sendAccountDeletedEmail(to) {
     return sendEmail(
         to,
@@ -60,7 +60,6 @@ async function sendAccountDeletedEmail(to) {
     );
 }
 
-// Suspension
 async function sendSuspensionEmail(to) {
     return sendEmail(
         to,
@@ -69,7 +68,6 @@ async function sendSuspensionEmail(to) {
     );
 }
 
-// Unsuspension
 async function sendUnsuspensionEmail(to) {
     return sendEmail(
         to,
@@ -78,11 +76,10 @@ async function sendUnsuspensionEmail(to) {
     );
 }
 
-// Wallet funded
 async function sendWalletFundedEmail(to, amount) {
     return sendEmail(
         to,
-        "Wallet Funded Successfully ",
+        "Wallet Funded Successfully",
         `Your PayGo wallet has been funded with ₦${amount}.`
     );
 }
@@ -106,4 +103,5 @@ module.exports = {
     sendWalletFundedEmail,
     sendPaymentReceiptEmail,
 };
+
 

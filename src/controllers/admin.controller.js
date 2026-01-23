@@ -1,8 +1,8 @@
 const User = require("../models/user.model");
-const { 
-    sendAccountSuspendedEmail, 
-    sendAccountActivatedEmail, 
-    sendAccountDeletedEmail 
+const {
+    sendSuspensionEmail,
+    sendUnsuspensionEmail,
+    sendAccountDeletedEmail
 } = require("../services/email.service");
 
 // GET ALL USERS
@@ -16,6 +16,7 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
+// SUSPEND USER
 exports.suspendUser = async (req, res) => {
     try {
         const { id } = req.params;
@@ -26,9 +27,10 @@ exports.suspendUser = async (req, res) => {
             { new: true }
         );
 
-        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+        if (!user)
+            return res.status(404).json({ success: false, message: "User not found" });
 
-        await sendAccountSuspendedEmail(user.email);
+        await sendSuspensionEmail(user.email);
 
         res.json({ success: true, message: "User suspended" });
     } catch (err) {
@@ -48,9 +50,10 @@ exports.activateUser = async (req, res) => {
             { new: true }
         );
 
-        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+        if (!user)
+            return res.status(404).json({ success: false, message: "User not found" });
 
-        await sendAccountActivatedEmail(user.email);
+        await sendUnsuspensionEmail(user.email);
 
         res.json({ success: true, message: "User activated" });
     } catch (err) {
@@ -66,7 +69,8 @@ exports.deleteUser = async (req, res) => {
 
         const user = await User.findByIdAndDelete(id);
 
-        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+        if (!user)
+            return res.status(404).json({ success: false, message: "User not found" });
 
         await sendAccountDeletedEmail(user.email);
 
@@ -76,4 +80,5 @@ exports.deleteUser = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error" });
     }
 };
+
 
