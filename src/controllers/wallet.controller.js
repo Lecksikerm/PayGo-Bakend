@@ -58,20 +58,48 @@ exports.fundWalletManual = async (req, res) => {
 exports.fundWalletPaystack = async (req, res) => {
     try {
         const { amount } = req.body;
+        const userId = req.user.id;
 
-        if (!amount || amount < 100)
+        if (!amount || amount < 100) {
             return res
                 .status(400)
                 .json({ message: "Minimum funding is ₦100" });
+        }
 
-        const user = req.user;
+        /**
+         * 🔒 FUNDING LOCK
+         * Prevent multiple Paystack initializations
+         */
+        const pendingFunding = await Transaction.findOne({
+            user: userId,
+            type: "credit",
+            status: "pending",
+        });
+
+        if (pendingFunding) {
+            return res.status(409).json({
+                message: "You already have a pending wallet funding",
+            });
+        }
+
+        /**
+         * Create funding INTENT first (no balance change)
+         */
+        const intent = await Transaction.create({
+            user: userId,
+            type: "credit",
+            amount,
+            status: "pending",
+            description: "Pending Paystack wallet funding",
+        });
 
         const response = await paystack.post("/transaction/initialize", {
-            email: user.email,
+            email: req.user.email,
             amount: amount * 100,
             callback_url: `${process.env.BACKEND_URL}/wallet/verify`,
             metadata: {
-                userId: user._id.toString(),
+                userId: userId,
+                intentId: intent._id.toString(), 
             },
         });
 
@@ -81,10 +109,11 @@ exports.fundWalletPaystack = async (req, res) => {
             reference: response.data.data.reference,
         });
     } catch (err) {
-        console.log(err.response?.data || err);
+        console.error(err.response?.data || err);
         res.status(500).json({ message: "Unable to initialize payment" });
     }
 };
+
 exports.verifyFunding = async (req, res) => {
     try {
         const { reference } = req.params;
