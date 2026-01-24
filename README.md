@@ -1,4 +1,4 @@
-# PayGo-Bakend
+# PayGo-Backend
 Slide 1 – Header / Project Title
 
 Title: PayGo Backend 🚀
