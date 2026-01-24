@@ -20,26 +20,34 @@ exports.getWallet = async (req, res) => {
 
 exports.fundWalletManual = async (req, res) => {
     try {
+        if (process.env.NODE_ENV === "production") {
+            return res
+                .status(403)
+                .json({ message: "Manual funding disabled in production" });
+        }
+
         const { amount } = req.body;
 
         if (!amount || amount <= 0)
             return res.status(400).json({ message: "Invalid amount" });
 
-        const wallet = await Wallet.findOne({ user: req.user.id });
-        wallet.balance += amount;
-        await wallet.save();
+        const wallet = await Wallet.findOneAndUpdate(
+            { user: req.user.id },
+            { $inc: { balance: amount } },
+            { new: true }
+        );
 
         await Transaction.create({
             user: req.user.id,
             type: "credit",
             amount,
-            description: "Manual wallet funding (development mode)",
+            description: "Manual wallet funding (dev mode)",
         });
 
         await sendWalletFundedEmail(req.user.email, amount);
 
         res.json({
-            message: "Wallet funded (manual)",
+            message: "Wallet funded",
             balance: wallet.balance,
         });
     } catch (err) {
@@ -77,7 +85,6 @@ exports.fundWalletPaystack = async (req, res) => {
         res.status(500).json({ message: "Unable to initialize payment" });
     }
 };
-
 exports.verifyFunding = async (req, res) => {
     try {
         const { reference } = req.params;
@@ -91,21 +98,16 @@ exports.verifyFunding = async (req, res) => {
         const userId = data.metadata.userId;
         const amount = data.amount / 100;
 
-        // Prevent double-crediting
-        const exists = await Transaction.findOne({ reference });
-        if (exists) {
+        const existingTx = await Transaction.findOne({ reference });
+        if (existingTx) {
             return res.status(200).json({
                 message: "Payment already processed",
                 status: "duplicate",
-                amount: exists.amount
+                amount: existingTx.amount,
             });
         }
 
-        const wallet = await Wallet.findOne({ user: userId });
-        wallet.balance += amount;
-        await wallet.save();
-
-        await Transaction.create({
+        const transaction = await Transaction.create({
             user: userId,
             type: "credit",
             amount,
@@ -114,8 +116,14 @@ exports.verifyFunding = async (req, res) => {
             description: "Wallet funded via Paystack",
         });
 
+        const wallet = await Wallet.findOneAndUpdate(
+            { user: userId },
+            { $inc: { balance: amount } },
+            { new: true }
+        );
+
         const user = await User.findById(userId);
-        await sendWalletFundedEmail(user.email, amount);
+        await sendWalletFundedEmail(user.email, amount, wallet.balance);
 
         res.status(200).json({
             message: "Wallet funded successfully",
@@ -123,15 +131,16 @@ exports.verifyFunding = async (req, res) => {
             newBalance: wallet.balance,
         });
     } catch (err) {
-        console.log(err.response?.data || err);
+        console.error(err.response?.data || err);
         res.status(500).json({ message: "Verification failed" });
     }
 };
 
 
+
 exports.paystackWebhook = async (req, res) => {
     try {
-        const rawBody = req.body.toString(); 
+        const rawBody = req.body.toString();
         const signature = req.headers["x-paystack-signature"];
 
         const hash = crypto
@@ -141,35 +150,34 @@ exports.paystackWebhook = async (req, res) => {
 
         if (hash !== signature) return res.status(401).send("Invalid signature");
 
-        const event = JSON.parse(rawBody); 
+        const event = JSON.parse(rawBody);
+        if (event.event !== "charge.success")
+            return res.status(200).send("Ignored");
 
-        if (event.event !== "charge.success") return res.status(200).send("Ignored");
-
-        const data = event.data;
-        const userId = data.metadata.userId;
-        const amount = data.amount / 100;
-        const reference = data.reference;
+        const { reference, amount, metadata } = event.data;
+        const userId = metadata.userId;
+        const creditedAmount = amount / 100;
 
         const exists = await Transaction.findOne({ reference });
         if (exists) return res.status(200).send("Already processed");
 
-        const wallet = await Wallet.findOne({ user: userId });
-        if (!wallet) return res.status(404).send("Wallet not found");
-
-        wallet.balance += amount;
-        await wallet.save();
-
         await Transaction.create({
             user: userId,
             type: "credit",
-            amount,
+            amount: creditedAmount,
             reference,
             status: "successful",
             description: "Auto-funded via Paystack webhook",
         });
 
+        const wallet = await Wallet.findOneAndUpdate(
+            { user: userId },
+            { $inc: { balance: creditedAmount } },
+            { new: true }
+        );
+
         const user = await User.findById(userId);
-        await sendWalletFundedEmail(user.email, amount, wallet.balance);
+        await sendWalletFundedEmail(user.email, creditedAmount, wallet.balance);
 
         res.status(200).send("OK");
     } catch (err) {
@@ -177,6 +185,7 @@ exports.paystackWebhook = async (req, res) => {
         res.status(500).send("Webhook Error");
     }
 };
+
 
 exports.transfer = async (req, res) => {
     try {
