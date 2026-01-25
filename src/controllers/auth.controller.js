@@ -18,12 +18,13 @@ exports.register = async (req, res, next) => {
         if (existingUser)
             return res.status(400).json({ message: "User already exists" });
 
+        // Create user
         const user = await User.create({
             firstName,
             lastName,
             email,
             password,
-            isVerified: true, 
+            isVerified: true,
         });
 
         // Create wallet automatically
@@ -33,9 +34,11 @@ exports.register = async (req, res, next) => {
             currency: "NGN",
         });
 
-        // Send welcome email only
-        await sendWelcomeEmail(user.email, `${firstName} ${lastName}`);
+        sendWelcomeEmail(user.email, `${firstName} ${lastName}`)
+            .then(() => console.log("Welcome email sent"))
+            .catch((err) => console.error("Email send failed:", err));
 
+        // Respond immediately
         res.status(201).json({
             message: "Registration successful. You can now log in.",
             user: {
@@ -49,6 +52,7 @@ exports.register = async (req, res, next) => {
         next(err);
     }
 };
+
 
 exports.login = async (req, res) => {
     try {
