@@ -116,22 +116,26 @@ const verifyFunding = async (req, res) => {
         const verify = await paystack.get(`/transaction/verify/${reference}`);
         const payment = verify.data.data;
 
+        // 🔹 Add debug logs here
+        console.log("Paystack verify data:", payment);
+        console.log("Reference from params:", reference);
+
         if (payment.status !== "success")
             return res.status(400).json({ message: "Payment not successful" });
 
         const userId = payment.metadata.userId;
         const creditedAmount = payment.amount / 100;
 
-        // Use transaction session to ensure atomicity
         const session = await mongoose.startSession();
         session.startTransaction();
 
-        // Only process pending transaction once
+        // 🔹 Add debug log before updating transaction
         const tx = await Transaction.findOneAndUpdate(
             { reference, status: "pending" },
             { status: "successful" },
             { new: true, session }
         );
+        console.log("Pending transaction found:", tx);
 
         if (!tx) {
             await session.abortTransaction();
@@ -139,7 +143,7 @@ const verifyFunding = async (req, res) => {
             return res.json({ status: "duplicate", message: "Payment already processed" });
         }
 
-        // Credit wallet
+        // Update wallet
         const wallet = await Wallet.findOneAndUpdate(
             { user: userId },
             { $inc: { balance: creditedAmount } },
@@ -162,6 +166,7 @@ const verifyFunding = async (req, res) => {
         res.status(500).json({ message: "Verification failed" });
     }
 };
+
 
 /**
  * PAYSTACK WEBHOOK (Auto-complete)
