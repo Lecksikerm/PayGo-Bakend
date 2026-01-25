@@ -38,33 +38,51 @@ const fundWalletPaystack = async (req, res) => {
             status: "pending"
         });
 
-        if (pending)
-            return res.status(409).json({ message: "You already have a pending wallet funding" });
+        if (pending) {
+           
+            return res.status(200).json({
+                status: true,
+                message: "You have a pending transaction",
+                authorization_url: pending.authorizationUrl, 
+                reference: pending.reference
+            });
+        }
 
-        // Initialize Paystack transaction - use authenticated user's email
+        // Generate truly unique reference with timestamp and random
+        const timestamp = Date.now();
+        const random = Math.floor(Math.random() * 10000);
+        const reference = `PAYGO_${userId}_${timestamp}_${random}`;
+
+        // Initialize Paystack transaction
         const response = await paystack.post("/transaction/initialize", {
-            email: req.user.email,  // ✅ Get email from authenticated user
+            email: req.user.email,
             amount: amount * 100,
+            reference: reference, 
             callback_url: `${process.env.FRONTEND_URL}/wallet/verify`,
-            metadata: { userId }
+            metadata: {
+                userId,
+                amount,
+                timestamp
+            }
         });
 
-        const reference = response.data.data.reference;
+        const authorizationUrl = response.data.data.authorization_url;
 
-        // Save transaction as pending
         await Transaction.create({
             user: userId,
             type: "credit",
             amount,
-            reference,
+            reference: reference,
             status: "pending",
-            description: "Pending Paystack wallet funding"
+            description: "Pending Paystack wallet funding",
+            authorizationUrl: authorizationUrl // Store for reuse
         });
 
         res.status(200).json({
             status: true,
-            authorization_url: response.data.data.authorization_url,
-            reference
+            authorization_url: authorizationUrl,
+            reference: reference,
+            email: req.user.email 
         });
     } catch (err) {
         console.error("Paystack Init Error:", err.response?.data || err);
