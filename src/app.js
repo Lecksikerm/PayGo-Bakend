@@ -1,10 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
-const bodyParser = require("body-parser");
 require("dotenv").config();
 
-// Swagger
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./docs/swagger");
 
@@ -20,14 +18,18 @@ const app = express();
 app.use(cors());
 app.use(morgan("dev"));
 
-
+/**
+ * PAYSTACK WEBHOOK (must use raw body)
+ */
 app.post(
   "/api/wallet/webhook/paystack",
-  express.raw({ type: "*/*" }),
+  express.raw({ type: "application/json" }), // ONLY raw for JSON
   walletController.paystackWebhook
 );
 
-// Express JSON parser for all other routes
+/**
+ * JSON parser for all other routes
+ */
 app.use(express.json());
 
 // Swagger
@@ -48,6 +50,7 @@ app.get("/", (req, res) => {
 });
 
 module.exports = app;
+
 
 
 

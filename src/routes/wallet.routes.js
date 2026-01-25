@@ -130,7 +130,7 @@ router.get("/verify/:reference", auth, walletController.verifyFunding);
  */
 router.post(
   "/webhook/paystack",
-  express.raw({ type: "*/*" }),
+  express.raw({ type: "application/json" }),  
   walletController.paystackWebhook
 );
 

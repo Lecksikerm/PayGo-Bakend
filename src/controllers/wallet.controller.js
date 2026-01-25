@@ -13,6 +13,7 @@ const getWallet = async (req, res) => {
     try {
         const wallet = await Wallet.findOne({ user: req.user.id });
         if (!wallet) return res.status(404).json({ message: "Wallet not found" });
+
         res.json({ balance: wallet.balance });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -28,7 +29,8 @@ const fundWalletManual = async (req, res) => {
             return res.status(403).json({ message: "Manual funding disabled in production" });
 
         const { amount } = req.body;
-        if (!amount || amount <= 0) return res.status(400).json({ message: "Invalid amount" });
+        if (!amount || amount <= 0)
+            return res.status(400).json({ message: "Invalid amount" });
 
         const wallet = await Wallet.findOneAndUpdate(
             { user: req.user.id },
@@ -40,7 +42,7 @@ const fundWalletManual = async (req, res) => {
             user: req.user.id,
             type: "credit",
             amount,
-            description: "Manual wallet funding (dev mode)",
+            description: "Manual wallet funding (dev mode)"
         });
 
         await sendWalletFundedEmail(req.user.email, amount);
@@ -52,7 +54,7 @@ const fundWalletManual = async (req, res) => {
 };
 
 /**
- * INIT PAYSTACK FUNDING (Frontend handles redirect)
+ * INIT PAYSTACK FUNDING
  */
 const fundWalletPaystack = async (req, res) => {
     try {
@@ -63,7 +65,12 @@ const fundWalletPaystack = async (req, res) => {
             return res.status(400).json({ message: "Minimum funding is ₦100" });
 
         // Prevent duplicate pending transactions
-        const pending = await Transaction.findOne({ user: userId, type: "credit", status: "pending" });
+        const pending = await Transaction.findOne({
+            user: userId,
+            type: "credit",
+            status: "pending"
+        });
+
         if (pending)
             return res.status(409).json({ message: "You already have a pending wallet funding" });
 
@@ -71,53 +78,55 @@ const fundWalletPaystack = async (req, res) => {
         const response = await paystack.post("/transaction/initialize", {
             email: req.user.email,
             amount: amount * 100,
-            callback_url: `${process.env.FRONTEND_URL}/wallet/verify`, // Frontend handles redirect
-            metadata: { userId },
+            callback_url: `${process.env.FRONTEND_URL}/wallet/verify`,
+            metadata: { userId }
         });
 
         const reference = response.data.data.reference;
 
-        // Create pending transaction
+        // Save transaction as pending
         await Transaction.create({
             user: userId,
             type: "credit",
             amount,
             reference,
             status: "pending",
-            description: "Pending Paystack wallet funding",
+            description: "Pending Paystack wallet funding"
         });
 
         res.status(200).json({
             status: true,
             authorization_url: response.data.data.authorization_url,
-            reference,
+            reference
         });
     } catch (err) {
-        console.error(err.response?.data || err);
+        console.error("Paystack Init Error:", err.response?.data || err);
         res.status(500).json({ message: "Unable to initialize payment" });
     }
 };
 
 /**
- * VERIFY FUNDING (Optional endpoint for frontend)
+ * VERIFY PAYSTACK PAYMENT (Frontend Optional)
  */
 const verifyFunding = async (req, res) => {
     try {
         const { reference } = req.params;
 
+        // Call Paystack API to verify
         const verify = await paystack.get(`/transaction/verify/${reference}`);
-        const data = verify.data.data;
+        const payment = verify.data.data;
 
-        if (data.status !== "success")
+        if (payment.status !== "success")
             return res.status(400).json({ message: "Payment not successful" });
 
-        const userId = data.metadata.userId;
-        const amount = data.amount / 100;
+        const userId = payment.metadata.userId;
+        const creditedAmount = payment.amount / 100;
 
-        // Atomic update with session
+        // Use transaction session to ensure atomicity
         const session = await mongoose.startSession();
         session.startTransaction();
 
+        // Only process pending transaction once
         const tx = await Transaction.findOneAndUpdate(
             { reference, status: "pending" },
             { status: "successful" },
@@ -127,12 +136,13 @@ const verifyFunding = async (req, res) => {
         if (!tx) {
             await session.abortTransaction();
             session.endSession();
-            return res.status(200).json({ message: "Payment already processed", status: "duplicate" });
+            return res.json({ status: "duplicate", message: "Payment already processed" });
         }
 
+        // Credit wallet
         const wallet = await Wallet.findOneAndUpdate(
             { user: userId },
-            { $inc: { balance: amount } },
+            { $inc: { balance: creditedAmount } },
             { new: true, session }
         );
 
@@ -140,29 +150,39 @@ const verifyFunding = async (req, res) => {
         session.endSession();
 
         const user = await User.findById(userId);
-        await sendWalletFundedEmail(user.email, amount, wallet.balance);
+        await sendWalletFundedEmail(user.email, creditedAmount, wallet.balance);
 
-        res.status(200).json({ message: "Wallet funded successfully", amount, newBalance: wallet.balance });
+        res.status(200).json({
+            message: "Wallet funded successfully",
+            amount: creditedAmount,
+            newBalance: wallet.balance
+        });
     } catch (err) {
-        console.error(err.response?.data || err);
+        console.error("Verify Funding Error:", err.response?.data || err);
         res.status(500).json({ message: "Verification failed" });
     }
 };
 
 /**
- * PAYSTACK WEBHOOK (Idempotent, auto-complete)
+ * PAYSTACK WEBHOOK (Auto-complete)
  */
 const paystackWebhook = async (req, res) => {
     try {
         const rawBody = req.body.toString();
         const signature = req.headers["x-paystack-signature"];
-        const hash = crypto.createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
+
+        // Verify signature
+        const hash = crypto
+            .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
             .update(rawBody)
             .digest("hex");
+
         if (hash !== signature) return res.status(401).send("Invalid signature");
 
         const event = JSON.parse(rawBody);
-        if (event.event !== "charge.success") return res.status(200).send("Ignored");
+
+        // Only process successful charges
+        if (event.event !== "charge.success") return res.status(200).send("Event ignored");
 
         const { reference, amount, metadata } = event.data;
         const userId = metadata.userId;
@@ -171,7 +191,7 @@ const paystackWebhook = async (req, res) => {
         const session = await mongoose.startSession();
         session.startTransaction();
 
-        // Only process pending transaction
+        // Idempotent update
         const tx = await Transaction.findOneAndUpdate(
             { reference, status: "pending" },
             { status: "successful" },
@@ -184,6 +204,7 @@ const paystackWebhook = async (req, res) => {
             return res.status(200).send("Already processed");
         }
 
+        // Credit wallet
         const wallet = await Wallet.findOneAndUpdate(
             { user: userId },
             { $inc: { balance: creditedAmount } },
@@ -198,7 +219,7 @@ const paystackWebhook = async (req, res) => {
 
         res.status(200).send("OK");
     } catch (err) {
-        console.error("Webhook error:", err);
+        console.error("Webhook Error:", err);
         res.status(500).send("Webhook Error");
     }
 };
@@ -208,24 +229,40 @@ const paystackWebhook = async (req, res) => {
  */
 const transfer = async (req, res) => {
     try {
-        const { email, amount, pin } = req.body;
+        let { recipientEmail, amount, pin } = req.body;
 
-        if (!amount || amount <= 0) return res.status(400).json({ message: "Invalid amount" });
-        if (!pin || !/^\d{4}$/.test(pin)) return res.status(400).json({ message: "A valid 4-digit PIN is required" });
+        if (!amount || amount <= 0)
+            return res.status(400).json({ message: "Invalid amount" });
+
+        if (!pin || !/^\d{4}$/.test(pin))
+            return res.status(400).json({ message: "A valid 4-digit PIN is required" });
+
+        if (!recipientEmail)
+            return res.status(400).json({ message: "Receiver email is required" });
+
+        const email = recipientEmail.trim().toLowerCase();
 
         const senderWallet = await Wallet.findOne({ user: req.user.id }).select("+pin");
-        if (!senderWallet.pin) return res.status(400).json({ message: "Set a wallet PIN before transfers" });
+        if (!senderWallet.pin)
+            return res.status(400).json({ message: "Set a wallet PIN before transfers" });
 
         const isMatch = await senderWallet.matchPin(pin);
-        if (!isMatch) return res.status(400).json({ message: "Incorrect PIN" });
+        if (!isMatch)
+            return res.status(400).json({ message: "Incorrect PIN" });
 
-        const receiverUser = await User.findOne({ email: new RegExp(`^${email}$`, "i") });
-        if (!receiverUser) return res.status(404).json({ message: "Receiver not found" });
-        if (receiverUser._id.equals(req.user.id)) return res.status(400).json({ message: "Cannot send to yourself" });
+        const receiverUser = await User.findOne({ email });
+        if (!receiverUser)
+            return res.status(404).json({ message: "Receiver not found" });
 
-        const receiverWallet = await Wallet.findOne({ user: receiverUser._id });
+        if (receiverUser._id.equals(req.user.id))
+            return res.status(400).json({ message: "Cannot send to yourself" });
 
-        if (senderWallet.balance < amount) return res.status(400).json({ message: "Insufficient balance" });
+        let receiverWallet = await Wallet.findOne({ user: receiverUser._id });
+        if (!receiverWallet)
+            receiverWallet = await Wallet.create({ user: receiverUser._id, balance: 0 });
+
+        if (senderWallet.balance < amount)
+            return res.status(400).json({ message: "Insufficient balance" });
 
         senderWallet.balance -= amount;
         receiverWallet.balance += amount;
@@ -233,12 +270,27 @@ const transfer = async (req, res) => {
         await senderWallet.save();
         await receiverWallet.save();
 
-        await Transaction.create({ user: req.user.id, type: "debit", amount, description: `Transfer to ${email}` });
-        await Transaction.create({ user: receiverUser._id, type: "credit", amount, description: `Received from ${req.user.email}` });
+        await Transaction.create({
+            user: req.user.id,
+            type: "debit",
+            amount,
+            description: `Transfer to ${email}`
+        });
 
-        res.json({ message: "Transfer successful" });
+        await Transaction.create({
+            user: receiverUser._id,
+            type: "credit",
+            amount,
+            description: `Received from ${req.user.email}`
+        });
+
+        res.json({
+            message: "Transfer successful",
+            newBalance: senderWallet.balance
+        });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        console.error("Transfer Error:", err);
+        res.status(500).json({ message: "Internal server error" });
     }
 };
 
@@ -249,14 +301,20 @@ const getTransactions = async (req, res) => {
     try {
         const userId = req.user.id;
         let { page = 1, limit = 10, type, startDate, endDate, sort = "desc" } = req.query;
+
         page = parseInt(page);
         limit = parseInt(limit);
 
         const filter = { user: userId };
-        if (type && ["credit", "debit"].includes(type)) filter.type = type;
-        if (startDate || endDate) filter.createdAt = {};
-        if (startDate) filter.createdAt.$gte = new Date(startDate + "T00:00:00Z");
-        if (endDate) filter.createdAt.$lte = new Date(endDate + "T23:59:59Z");
+
+        if (type && ["credit", "debit"].includes(type))
+            filter.type = type;
+
+        if (startDate || endDate) {
+            filter.createdAt = {};
+            if (startDate) filter.createdAt.$gte = new Date(startDate + "T00:00:00Z");
+            if (endDate) filter.createdAt.$lte = new Date(endDate + "T23:59:59Z");
+        }
 
         const sortOption = sort === "asc" ? 1 : -1;
 
@@ -272,7 +330,7 @@ const getTransactions = async (req, res) => {
             limit,
             total,
             totalPages: Math.ceil(total / limit),
-            transactions,
+            transactions
         });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -287,10 +345,12 @@ const getTransactionById = async (req, res) => {
         const userId = req.user.id;
         const { id } = req.params;
 
-        const transaction = await Transaction.findOne({ _id: id, user: userId });
-        if (!transaction) return res.status(404).json({ message: "Transaction not found" });
+        const tx = await Transaction.findOne({ _id: id, user: userId });
 
-        res.json({ message: "Transaction retrieved successfully", transaction });
+        if (!tx)
+            return res.status(404).json({ message: "Transaction not found" });
+
+        res.json({ transaction: tx });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -306,6 +366,7 @@ module.exports = {
     getTransactions,
     getTransactionById
 };
+
 
 
 
