@@ -129,7 +129,7 @@ const verifyFunding = async (req, res) => {
         const session = await mongoose.startSession();
         session.startTransaction();
 
-        // 🔹 Add debug log before updating transaction
+        // Add debug log before updating transaction
         const tx = await Transaction.findOneAndUpdate(
             { reference, status: "pending" },
             { status: "successful" },
@@ -247,13 +247,20 @@ const transfer = async (req, res) => {
 
         const email = recipientEmail.trim().toLowerCase();
 
-        const senderWallet = await Wallet.findOne({ user: req.user.id }).select("+pin");
-        if (!senderWallet.pin)
+        const sender = await User.findById(req.user.id).select("+walletPin");
+        if (!sender.walletPin) {
             return res.status(400).json({ message: "Set a wallet PIN before transfers" });
+        }
 
-        const isMatch = await senderWallet.matchPin(pin);
-        if (!isMatch)
+        const isMatch = await sender.matchPin(pin);
+        if (!isMatch) {
             return res.status(400).json({ message: "Incorrect PIN" });
+        }
+
+        const senderWallet = await Wallet.findOne({ user: req.user.id });
+        if (!senderWallet) {
+            return res.status(404).json({ message: "Sender wallet not found" });
+        }
 
         const receiverUser = await User.findOne({ email });
         if (!receiverUser)

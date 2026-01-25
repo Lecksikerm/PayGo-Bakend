@@ -10,6 +10,7 @@ const authRoutes = require("./routes/auth.routes");
 const walletRoutes = require("./routes/wallet.routes");
 const profileRoutes = require("./routes/profile.routes");
 const adminRoutes = require("./routes/admin.routes");
+const pinRoutes = require("./routes/pin.routes");
 
 const walletController = require("./controllers/wallet.controller");
 
@@ -23,7 +24,7 @@ app.use(morgan("dev"));
  */
 app.post(
   "/api/wallet/webhook/paystack",
-  express.raw({ type: "application/json" }), // ONLY raw for JSON
+  express.raw({ type: "application/json" }),
   walletController.paystackWebhook
 );
 
@@ -38,6 +39,7 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/wallet", walletRoutes);
+app.use("/api/wallet/pin", pinRoutes); 
 app.use("/api/profile", profileRoutes);
 app.use("/api/admin", adminRoutes);
 
