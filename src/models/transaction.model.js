@@ -29,10 +29,27 @@ const transactionSchema = new mongoose.Schema(
         description: {
             type: String,
         },
+
+        senderInfo: {
+            userId: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "User",
+            },
+            name: String,
+            email: String,
+        },
+    
+        recipientInfo: {
+            userId: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "User",
+            },
+            name: String,
+            email: String,
+        }
     },
     { timestamps: true }
 );
-
 
 module.exports = mongoose.model("Transaction", transactionSchema);
 

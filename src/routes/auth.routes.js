@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const User = require("../models/user.model"); // ← ADD THIS IMPORT
 const auth = require("../controllers/auth.controller");
 
 /**
@@ -137,7 +138,71 @@ router.post("/forgot-password", auth.forgotPassword);
  */
 router.post("/reset-password", auth.resetPassword);
 
+/**
+ * @swagger
+ * /auth/verify-user:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Verify if user exists by email
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "user@example.com"
+ *     responses:
+ *       200:
+ *         description: User verification result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 exists:
+ *                   type: boolean
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     firstName:
+ *                       type: string
+ *                     lastName:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ */
+router.post("/verify-user", async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ message: "Email is required" });
+        }
+
+        const user = await User.findOne({ email: email.toLowerCase() })
+            .select('firstName lastName email');
+
+        if (user) {
+            res.json({
+                exists: true,
+                user: {
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    email: user.email
+                }
+            });
+        } else {
+            res.json({ exists: false });
+        }
+    } catch (err) {
+        console.error("Verify user error:", err);
+        res.status(500).json({ message: "Verification failed" });
+    }
+});
+
 module.exports = router;
-
-
-

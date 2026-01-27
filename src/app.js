@@ -43,6 +43,7 @@ app.use("/api/wallet/pin", pinRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/beneficiaries", require("./routes/beneficiary.routes"));
+app.use("/api/notifications", require("./routes/notification.routes"));
 
 app.get("/api/ping", (req, res) => {
   res.status(200).json({ message: "awake" });

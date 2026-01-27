@@ -215,8 +215,9 @@ const paystackWebhook = async (req, res) => {
         res.status(500).send("Webhook Error");
     }
 };
+
 /**
- * TRANSFER FUNDS
+ * TRANSFER FUNDS (with sender info and notifications)
  */
 const transfer = async (req, res) => {
     try {
@@ -262,6 +263,9 @@ const transfer = async (req, res) => {
         if (senderWallet.balance < amount)
             return res.status(400).json({ message: "Insufficient balance" });
 
+        const senderName = `${sender.firstName} ${sender.lastName}`;
+        const receiverName = `${receiverUser.firstName} ${receiverUser.lastName}`;
+
         // Perform transfer
         senderWallet.balance -= amount;
         receiverWallet.balance += amount;
@@ -269,39 +273,64 @@ const transfer = async (req, res) => {
         await senderWallet.save();
         await receiverWallet.save();
 
-        await Transaction.create({
+        // Create DEBIT transaction for sender
+        const debitTransaction = await Transaction.create({
             user: req.user.id,
             type: "debit",
             amount,
-            description: `Transfer to ${email}`
+            description: `Transfer to ${receiverName}`,
+            recipientInfo: {
+                userId: receiverUser._id,
+                name: receiverName,
+                email: email,
+            }
         });
 
-        await Transaction.create({
+        // Create CREDIT transaction for receiver with sender info
+        const creditTransaction = await Transaction.create({
             user: receiverUser._id,
             type: "credit",
             amount,
-            description: `Received from ${req.user.email}`
+            description: `Received from ${senderName}`,
+            senderInfo: {
+                userId: sender._id,
+                name: senderName,
+                email: sender.email,
+            }
         });
 
+        // Create notifications
+        const Notification = require("../models/notification.model");
+
+        // Notification for sender (debit)
+        Notification.create({
+            user: req.user.id,
+            type: "debit",
+            title: "Money Sent",
+            message: `You sent ₦${amount.toLocaleString()} to ${receiverName}`,
+            amount: amount,
+            relatedTransaction: debitTransaction._id,
+        });
+
+        // Notification for receiver (credit)
+        Notification.create({
+            user: receiverUser._id,
+            type: "credit",
+            title: "Money Received!",
+            message: `You received ₦${amount.toLocaleString()} from ${senderName}`,
+            amount: amount,
+            relatedTransaction: creditTransaction._id,
+        });
+
+        // Save beneficiary
         await saveBeneficiaryFromTransfer(req.user.id, receiverUser);
 
-        // ========== SEND EMAIL NOTIFICATIONS (Fire and Forget) ==========
-        const senderName = `${sender.firstName} ${sender.lastName}`;
-        const receiverName = `${receiverUser.firstName} ${receiverUser.lastName}`;
+        // Send emails in background
+        sendTransferSentEmail(sender.email, receiverName, amount, senderWallet.balance)
+            .catch(err => console.error("Sender email failed:", err));
 
-        sendTransferSentEmail(
-            sender.email,
-            receiverName,
-            amount,
-            senderWallet.balance
-        ).catch(err => console.error("Sender email failed:", err));
-
-        sendTransferReceivedEmail(
-            receiverUser.email,
-            senderName,
-            amount,
-            receiverWallet.balance
-        ).catch(err => console.error("Receiver email failed:", err));
+        sendTransferReceivedEmail(receiverUser.email, senderName, amount, receiverWallet.balance)
+            .catch(err => console.error("Receiver email failed:", err));
 
         res.json({
             message: "Transfer successful",
