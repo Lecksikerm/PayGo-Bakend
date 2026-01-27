@@ -23,6 +23,8 @@ const upload = require("../middlewares/upload.middleware");
  *     responses:
  *       200:
  *         description: Profile retrieved successfully
+ *       401:
+ *         description: Unauthorized
  */
 router.get("/", auth, profileController.getProfile);
 
@@ -52,15 +54,17 @@ router.get("/", auth, profileController.getProfile);
  *     responses:
  *       200:
  *         description: Profile updated successfully
+ *       401:
+ *         description: Unauthorized
  */
 router.put("/", auth, profileController.updateProfile);
 
 /**
  * @swagger
  * /profile/change-password:
- *   post:
+ *   put:
  *     tags: [Profile]
- *     summary: Change password
+ *     summary: Change user password
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -75,15 +79,28 @@ router.put("/", auth, profileController.updateProfile);
  *             properties:
  *               currentPassword:
  *                 type: string
+ *                 example: "oldpassword123"
  *               newPassword:
  *                 type: string
+ *                 example: "newpassword456"
+ *                 minLength: 6
  *     responses:
  *       200:
- *         description: Password updated successfully
+ *         description: Password changed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Password changed successfully"
  *       400:
- *         description: Invalid password
+ *         description: Invalid password or missing fields
+ *       401:
+ *         description: Unauthorized or incorrect current password
  */
-router.post("/change-password", auth, profileController.changePassword);
+router.put("/change-password", auth, profileController.changePassword);
 
 /**
  * @swagger
@@ -106,6 +123,8 @@ router.post("/change-password", auth, profileController.changePassword);
  *     responses:
  *       200:
  *         description: Avatar uploaded successfully
+ *       400:
+ *         description: No image file uploaded
  */
 router.post("/avatar", auth, upload.single("avatar"), profileController.uploadAvatar);
 
@@ -133,7 +152,7 @@ router.post("/avatar", auth, upload.single("avatar"), profileController.uploadAv
  *       200:
  *         description: Account deleted successfully
  *       400:
- *         description: Incorrect password
+ *         description: Password is required or incorrect
  *       401:
  *         description: Unauthorized
  */

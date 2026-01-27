@@ -17,8 +17,8 @@ exports.getProfile = async (req, res) => {
             user
         });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: err.message });
+        console.error("Get profile error:", err);
+        res.status(500).json({ message: "Failed to fetch profile" });
     }
 };
 
@@ -31,10 +31,11 @@ exports.updateProfile = async (req, res) => {
         const user = await User.findById(req.user.id);
         if (!user) return res.status(404).json({ message: "User not found" });
 
-        if (firstName) user.firstName = firstName;
-        if (lastName) user.lastName = lastName;
-        if (phone) user.phone = phone;
-        if (address) user.address = address;
+        // Only update provided fields
+        if (firstName !== undefined) user.firstName = firstName;
+        if (lastName !== undefined) user.lastName = lastName;
+        if (phone !== undefined) user.phone = phone;
+        if (address !== undefined) user.address = address;
 
         await user.save();
 
@@ -46,19 +47,23 @@ exports.updateProfile = async (req, res) => {
             user: userResponse
         });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: err.message });
+        console.error("Update profile error:", err);
+        res.status(500).json({ message: "Failed to update profile" });
     }
 };
 
 
-// CHANGE PASSWORD
+// CHANGE PASSWORD (Non-blocking email)
 exports.changePassword = async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
 
         if (!currentPassword || !newPassword) {
-            return res.status(400).json({ message: "Both old and new password are required" });
+            return res.status(400).json({ message: "Both current and new password are required" });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({ message: "New password must be at least 6 characters" });
         }
 
         const user = await User.findById(req.user.id).select("+password");
@@ -67,19 +72,23 @@ exports.changePassword = async (req, res) => {
         const isMatch = await user.matchPassword(currentPassword);
         if (!isMatch) return res.status(400).json({ message: "Current password is incorrect" });
 
+        // Check if new password is same as old
         const samePassword = await user.matchPassword(newPassword);
-        if (samePassword) return res.status(400).json({ message: "New password cannot be the same as the old password" });
+        if (samePassword) return res.status(400).json({ message: "New password cannot be the same as the current password" });
 
+        // Update password
         user.password = newPassword;
         await user.save();
 
-        await sendPasswordChangedEmail(user.email);
+        // Send email in background (non-blocking)
+        sendPasswordChangedEmail(user.email)
+            .catch(err => console.error("Password changed email failed:", err));
 
         res.json({ message: "Password changed successfully" });
 
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: err.message });
+        console.error("Change password error:", err);
+        res.status(500).json({ message: "Failed to change password" });
     }
 };
 
@@ -88,36 +97,43 @@ exports.changePassword = async (req, res) => {
 exports.uploadAvatar = async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ message: "User not found" });
 
         if (!req.file) return res.status(400).json({ message: "No image file uploaded" });
 
-        if (user.avatar) {
-            const oldPublicId = user.avatar.split("/").pop().split(".")[0];
-            await cloudinary.uploader.destroy("paygo/avatars/" + oldPublicId);
+        // Delete old avatar if exists
+        if (user.avatar && user.avatar.includes('cloudinary')) {
+            try {
+                const oldPublicId = user.avatar.split("/").pop().split(".")[0];
+                await cloudinary.uploader.destroy("paygo/avatars/" + oldPublicId);
+            } catch (cloudErr) {
+                console.error("Failed to delete old avatar:", cloudErr);
+                
+            }
         }
 
         user.avatar = req.file.path;
         await user.save();
 
-        return res.json({
+        res.json({
             message: "Avatar uploaded successfully",
             avatar: user.avatar,
         });
 
     } catch (err) {
-        console.error(err);
-        return res.status(500).json({ message: "Server error" });
+        console.error("Upload avatar error:", err);
+        res.status(500).json({ message: "Failed to upload avatar" });
     }
 };
 
 
-// DELETE ACCOUNT
+// DELETE ACCOUNT 
 exports.deleteAccount = async (req, res) => {
     try {
         const userId = req.user.id;
         const { password } = req.body;
 
-        if (!password) return res.status(400).json({ message: "Password is required" });
+        if (!password) return res.status(400).json({ message: "Password is required to delete account" });
 
         const user = await User.findById(userId).select("+password");
         if (!user) return res.status(404).json({ message: "User not found" });
@@ -125,18 +141,17 @@ exports.deleteAccount = async (req, res) => {
         const isMatch = await user.matchPassword(password);
         if (!isMatch) return res.status(400).json({ message: "Incorrect password" });
 
+        // Delete user
         await User.findByIdAndDelete(userId);
 
-        await sendAccountDeletedEmail(user.email);
+        // Send email in background 
+        sendAccountDeletedEmail(user.email)
+            .catch(err => console.error("Account deleted email failed:", err));
 
-        return res.status(200).json({
-            message: "Account deleted successfully",
-        });
+        res.json({ message: "Account deleted successfully" });
 
-    } catch (error) {
-        console.error(error);
-        return res.status(500).json({
-            message: "Server error",
-        });
+    } catch (err) {
+        console.error("Delete account error:", err);
+        res.status(500).json({ message: "Failed to delete account" });
     }
 };
