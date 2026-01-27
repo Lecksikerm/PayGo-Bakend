@@ -2,9 +2,17 @@ const Wallet = require("../models/wallet.model");
 const Transaction = require("../models/transaction.model");
 const User = require("../models/user.model");
 const paystack = require("../services/paystack.service");
-const { sendWalletFundedEmail } = require("../services/email.service");
+const {
+    sendWalletFundedEmail,
+    sendTransferSentEmail,      
+    sendTransferReceivedEmail   
+} = require("../services/email.service");
 const mongoose = require("mongoose");
 const crypto = require("crypto");
+const {
+    saveBeneficiaryFromTransfer,
+} = require("../controllers/beneficiary.controller");
+
 
 /**
  * GET WALLET BALANCE
@@ -39,11 +47,11 @@ const fundWalletPaystack = async (req, res) => {
         });
 
         if (pending) {
-           
+
             return res.status(200).json({
                 status: true,
                 message: "You have a pending transaction",
-                authorization_url: pending.authorizationUrl, 
+                authorization_url: pending.authorizationUrl,
                 reference: pending.reference
             });
         }
@@ -57,7 +65,7 @@ const fundWalletPaystack = async (req, res) => {
         const response = await paystack.post("/transaction/initialize", {
             email: req.user.email,
             amount: amount * 100,
-            reference: reference, 
+            reference: reference,
             callback_url: `${process.env.FRONTEND_URL}/wallet/verify`,
             metadata: {
                 userId,
@@ -75,14 +83,14 @@ const fundWalletPaystack = async (req, res) => {
             reference: reference,
             status: "pending",
             description: "Pending Paystack wallet funding",
-            authorizationUrl: authorizationUrl // Store for reuse
+            authorizationUrl: authorizationUrl 
         });
 
         res.status(200).json({
             status: true,
             authorization_url: authorizationUrl,
             reference: reference,
-            email: req.user.email 
+            email: req.user.email
         });
     } catch (err) {
         console.error("Paystack Init Error:", err.response?.data || err);
@@ -91,7 +99,7 @@ const fundWalletPaystack = async (req, res) => {
 };
 
 /**
- * VERIFY PAYSTACK PAYMENT (Auto-verify for frontend)
+ * VERIFY PAYSTACK PAYMENT
  */
 const verifyFunding = async (req, res) => {
     try {
@@ -144,12 +152,12 @@ const verifyFunding = async (req, res) => {
         });
     } catch (err) {
         console.error("Verify Funding Error:", err.response?.data || err);
-        res.status(500).json({ message: "Verification failed" });
+        res.status(500).json({ message: "Verification failed" }); 
     }
 };
 
 /**
- * PAYSTACK WEBHOOK (Auto-complete)
+ * PAYSTACK WEBHOOK
  */
 const paystackWebhook = async (req, res) => {
     try {
@@ -252,6 +260,7 @@ const transfer = async (req, res) => {
         if (senderWallet.balance < amount)
             return res.status(400).json({ message: "Insufficient balance" });
 
+        // Perform transfer
         senderWallet.balance -= amount;
         receiverWallet.balance += amount;
 
@@ -271,6 +280,32 @@ const transfer = async (req, res) => {
             amount,
             description: `Received from ${req.user.email}`
         });
+
+        await saveBeneficiaryFromTransfer(req.user.id, receiverUser);
+
+        // ========== SEND EMAIL NOTIFICATIONS ==========
+        try {
+            const senderName = `${sender.firstName} ${sender.lastName}`;
+            const receiverName = `${receiverUser.firstName} ${receiverUser.lastName}`;
+
+            // Email to Sender
+            await sendTransferSentEmail(
+                sender.email,
+                receiverName,
+                amount,
+                senderWallet.balance
+            );
+
+            // Email to Receiver
+            await sendTransferReceivedEmail(
+                receiverUser.email,
+                senderName,
+                amount,
+                receiverWallet.balance
+            );
+        } catch (emailErr) {
+            console.error("Failed to send transfer emails:", emailErr);
+        }
 
         res.json({
             message: "Transfer successful",

@@ -11,7 +11,7 @@ const auth = require("../controllers/auth.controller");
 
 /**
  * @swagger
- * /api/auth/register:
+ * /auth/register:
  *   post:
  *     summary: Register a new user (no OTP required)
  *     tags: [Auth]
@@ -49,7 +49,7 @@ router.post("/register", auth.register);
 
 /**
  * @swagger
- * /api/auth/login:
+ * /auth/login:
  *   post:
  *     summary: Login user and return access token + user data
  *     tags: [Auth]
@@ -79,7 +79,7 @@ router.post("/login", auth.login);
 
 /**
  * @swagger
- * /api/auth/forgot-password:
+ * /auth/forgot-password:
  *   post:
  *     summary: Send OTP to email for password reset
  *     tags: [Auth]
@@ -105,7 +105,7 @@ router.post("/forgot-password", auth.forgotPassword);
 
 /**
  * @swagger
- * /api/auth/reset-password:
+ * /auth/reset-password:
  *   post:
  *     summary: Reset user password using email + OTP
  *     tags: [Auth]

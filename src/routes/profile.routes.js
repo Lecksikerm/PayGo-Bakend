@@ -14,7 +14,7 @@ const upload = require("../middlewares/upload.middleware");
 
 /**
  * @swagger
- * /api/profile:
+ * /profile:
  *   get:
  *     tags: [Profile]
  *     summary: Get user profile
@@ -28,7 +28,7 @@ router.get("/", auth, profileController.getProfile);
 
 /**
  * @swagger
- * /api/profile:
+ * /profile:
  *   put:
  *     tags: [Profile]
  *     summary: Update user profile
@@ -57,7 +57,7 @@ router.put("/", auth, profileController.updateProfile);
 
 /**
  * @swagger
- * /api/profile/change-password:
+ * /profile/change-password:
  *   post:
  *     tags: [Profile]
  *     summary: Change password
@@ -87,7 +87,7 @@ router.post("/change-password", auth, profileController.changePassword);
 
 /**
  * @swagger
- * /api/profile/avatar:
+ * /profile/avatar:
  *   post:
  *     tags: [Profile]
  *     summary: Upload or update profile avatar
@@ -111,7 +111,7 @@ router.post("/avatar", auth, upload.single("avatar"), profileController.uploadAv
 
 /**
  * @swagger
- * /api/profile/delete:
+ * /profile/delete:
  *   delete:
  *     tags: [Profile]
  *     summary: Delete user account permanently (requires password confirmation)

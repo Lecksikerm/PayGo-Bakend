@@ -39,9 +39,10 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/wallet", walletRoutes);
-app.use("/api/wallet/pin", pinRoutes); 
+app.use("/api/wallet/pin", pinRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/beneficiaries", require("./routes/beneficiary.routes"));
 
 app.get("/api/ping", (req, res) => {
   res.status(200).json({ message: "awake" });
