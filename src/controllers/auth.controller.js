@@ -99,7 +99,8 @@ exports.forgotPassword = async (req, res) => {
         user.otpExpires = otpExpires;
         await user.save();
 
-        await sendOTPEmail(user.email, otp);
+        sendOTPEmail(user.email, otp)
+            .catch(err => console.error("OTP email failed:", err));
 
         res.json({ message: "OTP sent to email for password reset" });
 

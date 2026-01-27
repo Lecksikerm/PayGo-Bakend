@@ -143,13 +143,15 @@ const verifyFunding = async (req, res) => {
         session.endSession();
 
         const user = await User.findById(userId);
-        await sendWalletFundedEmail(user.email, creditedAmount, wallet.balance);
+        sendWalletFundedEmail(user.email, creditedAmount, wallet.balance)
+            .catch(err => console.error("Funding email failed:", err));
 
         res.status(200).json({
             message: "Wallet funded successfully",
             amount: creditedAmount,
             newBalance: wallet.balance
         });
+
     } catch (err) {
         console.error("Verify Funding Error:", err.response?.data || err);
         res.status(500).json({ message: "Verification failed" });
@@ -204,7 +206,8 @@ const paystackWebhook = async (req, res) => {
         session.endSession();
 
         const user = await User.findById(userId);
-        await sendWalletFundedEmail(user.email, creditedAmount, wallet.balance);
+        sendWalletFundedEmail(user.email, creditedAmount, wallet.balance)
+            .catch(err => console.error("Webhook funding email failed:", err));
 
         res.status(200).send("OK");
     } catch (err) {
@@ -299,7 +302,7 @@ const transfer = async (req, res) => {
             amount,
             receiverWallet.balance
         ).catch(err => console.error("Receiver email failed:", err));
-       
+
         res.json({
             message: "Transfer successful",
             newBalance: senderWallet.balance
